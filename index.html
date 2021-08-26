@@ -1,0 +1,341 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="user-scalable=no,width=device-width, initial-scale=1"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/110/three.min.js"></script>
+    <script src="js/controls/myOrbitControls.js"></script>
+    <script>
+      /* ピッチインピッチアウトによる拡大縮小を禁止 */
+      document.documentElement.addEventListener(
+        "touchstart",
+        function(e) {
+          if (e.touches.length >= 2) {
+            e.preventDefault();
+          }
+        },
+        { passive: false }
+      );
+      /* ダブルタップによる拡大を禁止 */
+      var t = 0;
+      document.documentElement.addEventListener(
+        "touchend",
+        function(e) {
+          var now = new Date().getTime();
+          if (now - t < 350) {
+            e.preventDefault();
+          }
+          t = now;
+        },
+        false
+      );
+
+      // シーンを作成
+      const scene = new THREE.Scene();
+
+      const buildingGeometry = new THREE.BufferGeometry();
+      const basicAngle = Math.PI / 6;
+      const summitZ = -2 / 3;
+      const summitY = Math.sin(Math.acos(summitZ));
+      const buildingVertices = new Float32Array([
+        0,
+        summitY,
+        summitZ,
+
+        0,
+        0,
+        0,
+
+        Math.tan(basicAngle),
+        0,
+        -1,
+
+        //
+
+        0,
+        summitY,
+        summitZ,
+
+        Math.tan(basicAngle),
+        0,
+        -1,
+
+        -Math.tan(basicAngle),
+        0,
+        -1,
+
+        //
+
+        0,
+        summitY,
+        summitZ,
+
+        -Math.tan(basicAngle),
+        0,
+        -1,
+
+        0,
+        0,
+        0
+      ]);
+      // itemSize = 3 because there are 3 values (components) per vertex
+      buildingGeometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(buildingVertices, 3)
+      );
+      buildingGeometry.computeVertexNormals();
+      class Building {
+        constructor(address) {
+          this.address = address;
+          this.position();
+        }
+
+        position() {
+          this.sector = this.address % 6;
+          this.pyramid = Math.floor(this.address / 6);
+          //console.log(this.pyramid);
+          let left = 0,
+            right = this.pyramid;
+          do {
+            const mid = Math.round((left + right) / 2);
+            if (mid * mid < this.pyramid) {
+              left = mid;
+            } else if (mid * mid > this.pyramid) {
+              right = mid;
+            } else {
+              left = mid;
+              break;
+            }
+          } while (right - left > 1);
+          this.layer = left;
+          this.triangle = this.pyramid - this.layer * this.layer;
+          this.posInRow =
+            Math.floor((this.triangle + 1) / 2) *
+            ((this.triangle % 2) * -2 + 1) *
+            (Math.tan(Math.PI / 6) +
+              2 / 3 / Math.cos(Math.PI / 6) -
+              Math.tan(Math.PI / 6) / 3);
+          //console.log(this.layer);
+          this.posInSector = new THREE.Vector2(
+            this.posInRow,
+            -2 / 3 - 2 * this.layer
+          );
+          if ((((this.triangle + 1) % 4 > 1) + this.layer) % 2) {
+            this.outer = true;
+            this.posInSector.y -= 2 / 3;
+          } else {
+            this.outer = false;
+          }
+          this.globalPos = this.posInSector.clone();
+          this.globalPos.rotateAround(
+            new THREE.Vector2(0, 0),
+            -(this.sector * Math.PI) / 3
+          );
+        }
+
+        create() {
+          const hue = 360 * Math.random(),
+            saturationRandom = 30,
+            minSaturation = 40,
+            saturation = minSaturation + saturationRandom * Math.random(),
+            lightnessRandom = 30,
+            minLightness = 40,
+            lightness = minLightness + lightnessRandom * Math.random(),
+            buildingMaterial = new THREE.MeshStandardMaterial( {color: 0xFF0000} );
+          this.mesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
+          scene.add(this.mesh);
+          this.mesh.position.set(this.globalPos.x, 0, this.globalPos.y);
+          this.mesh.rotateY((this.sector * Math.PI) / 3 + this.outer * Math.PI);
+        }
+      }
+
+      // サイズを指定
+      const width = window.innerWidth,
+        height = window.innerHeight,
+        skyColor = "skyblue",
+        landColor = "green",
+        fov = 60,
+        near = 0.1;
+      const buildings = [];
+      for (let i = 0; i < 24; i++) {
+        buildings.push(new Building(i));
+      }
+      const size = Math.max.apply(
+        null,
+        buildings.map(function(o) {
+          return (5 - 2 * o.outer) / 3 - o.posInSector.y;
+        })
+      );
+      let looking = new THREE.Vector3(0, 0.1, 0);
+
+      // ページの読み込みを待つ
+      window.addEventListener("load", init);
+
+      function init() {
+        // レンダラーを作成
+        const renderer = new THREE.WebGLRenderer({
+          canvas: document.querySelector("#myCanvas")
+        });
+        renderer.setSize(width, height);
+        renderer.setClearColor(skyColor, 1);
+
+        // カメラを作成
+        const camera = new THREE.PerspectiveCamera(
+          fov,
+          width / height,
+          near,
+          2000
+        );
+        // カメラの初期座標を設定
+        camera.position.set(Math.tan(Math.PI / 6) * size, size, size);
+
+        // カメラコントローラーを作成
+        const controls = new THREE.OrbitControls(camera);
+
+        // 初期化のために実行
+        onResize();
+        // リサイズイベント発生時に実行
+        window.addEventListener("resize", onResize);
+
+        // 形状とマテリアルからLANDメッシュを作成します
+        const landGeometry = new THREE.BufferGeometry();
+        const originToSummit = size / Math.cos(Math.PI / 6);
+        const vertices = new Float32Array([
+          originToSummit,
+          0,
+          0,
+
+          originToSummit * Math.cos((Math.PI * 2) / 3),
+          0,
+          originToSummit * Math.sin((Math.PI * 2) / 3),
+
+          originToSummit * Math.cos(Math.PI / 3),
+          0,
+          originToSummit * Math.sin(Math.PI / 3),
+
+          //
+
+          originToSummit,
+          0,
+          0,
+
+          -originToSummit,
+          0,
+          0,
+
+          originToSummit * Math.cos((Math.PI * 2) / 3),
+          0,
+          originToSummit * Math.sin((Math.PI * 2) / 3),
+
+          //
+
+          originToSummit,
+          0,
+          0,
+          originToSummit * Math.cos((Math.PI * 4) / 3),
+          0,
+          originToSummit * Math.sin((Math.PI * 4) / 3),
+          -originToSummit,
+          0,
+          0,
+
+          //
+
+          originToSummit,
+          0,
+          0,
+          originToSummit * Math.cos((Math.PI * 5) / 3),
+          0,
+          originToSummit * Math.sin((Math.PI * 5) / 3),
+          originToSummit * Math.cos((Math.PI * 4) / 3),
+          0,
+          originToSummit * Math.sin((Math.PI * 4) / 3)
+        ]);
+        // itemSize = 3 because there are 3 values (components) per vertex
+        landGeometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(vertices, 3)
+        );
+        landGeometry.computeVertexNormals();
+        const land = new THREE.Mesh(
+          landGeometry,
+          new THREE.MeshBasicMaterial({
+            color: landColor
+          })
+        );
+        scene.add(land);
+        // 平行光源を作成
+        // new THREE.DirectionalLight(色, 光の強さ)
+        const light = new THREE.DirectionalLight(0xffffff, 2);
+        scene.add(light);
+        light.position.set(1, 2, 0);const geometry = new THREE.BoxGeometry( 1, 1, 1 );
+
+        buildings.forEach(building => building.create());
+
+        // canvas 要素の参照を取得する
+        const canvas = document.querySelector("#myCanvas");
+        // マウス座標管理用のベクトルを作成
+        const mouse = new THREE.Vector2();
+        // マウスイベントを登録
+        canvas.addEventListener("mousemove", handleMouseMove);
+
+        // マウスを動かしたときのイベント
+        function handleMouseMove(event) {
+          const element = event.currentTarget;
+          // canvas要素上のXY座標
+          const x = event.clientX - element.offsetLeft;
+          const y = event.clientY - element.offsetTop;
+          // canvas要素の幅・高さ
+          const w = element.offsetWidth;
+          const h = element.offsetHeight;
+
+          // -1〜+1の範囲で現在のマウス座標を登録する
+          mouse.x = (x / w) * 2 - 1;
+          mouse.y = -(y / h) * 2 + 1;
+        }
+
+        // レイキャストを作成
+        const raycaster = new THREE.Raycaster();
+
+        tick();
+        // 毎フレーム時に実行されるループイベントです
+        function tick() {
+          // レイキャスト = マウス位置からまっすぐに伸びる光線ベクトルを生成
+          raycaster.setFromCamera(mouse, camera);
+
+          // その光線とぶつかったオブジェクトを得る
+          const intersects = raycaster.intersectObjects(scene.children);
+
+          if (intersects.length > 0) {
+            // ぶつかったオブジェクトに対してなんかする
+            //console.log(intersects[0].object.position);
+            looking = intersects[0].object.position;
+          }
+
+          // レンダリング
+          renderer.render(scene, camera);
+          requestAnimationFrame(tick);
+        }
+        function onResize() {
+          // サイズを取得
+          const width = window.innerWidth;
+          const height = window.innerHeight;
+
+          // レンダラーのサイズを調整する
+          renderer.setPixelRatio(window.devicePixelRatio);
+          renderer.setSize(width, height);
+
+          // カメラのアスペクト比を正す
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="myCanvas"></canvas>
+  </body>
+</html>
