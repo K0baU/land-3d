@@ -3,12 +3,27 @@
     <meta charset="utf-8" />
     <meta
       name="viewport"
-      content="user-scalable=no,width=device-width, initial-scale=1"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
     />
     <link rel="stylesheet" href="style.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/110/three.min.js"></script>
-    <script src="js/controls/myOrbitControls.js"></script>
-    <script>
+    <style>
+      body {
+        background-color: #ccc;
+        color: #000;
+      }
+
+      a {
+        color: #f00;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "/js/three.module.js";
+
+      import { OrbitControls } from "/js/OrbitControls.js";
+      let camera, controls, scene, renderer;
+
       /* ピッチインピッチアウトによる拡大縮小を禁止 */
       document.documentElement.addEventListener(
         "touchstart",
@@ -34,7 +49,7 @@
       );
 
       // シーンを作成
-      const scene = new THREE.Scene();
+      scene = new THREE.Scene();
 
       const buildingGeometry = new THREE.BufferGeometry();
       const basicAngle = Math.PI / 6;
@@ -144,7 +159,9 @@
             lightnessRandom = 30,
             minLightness = 40,
             lightness = minLightness + lightnessRandom * Math.random(),
-            buildingMaterial = new THREE.MeshStandardMaterial( {color: 0xFF0000} );
+            buildingMaterial = new THREE.MeshStandardMaterial({
+              color: 0xff0000
+            });
           this.mesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
           scene.add(this.mesh);
           this.mesh.position.set(this.globalPos.x, 0, this.globalPos.y);
@@ -160,7 +177,7 @@
         fov = 60,
         near = 0.1;
       const buildings = [];
-      for (let i = 0; i < 24; i++) {
+      for (let i = 0; i < 600; i++) {
         buildings.push(new Building(i));
       }
       const size = Math.max.apply(
@@ -177,10 +194,11 @@
       function init() {
         // レンダラーを作成
         const renderer = new THREE.WebGLRenderer({
-          canvas: document.querySelector("#myCanvas")
+          antialias: true
         });
         renderer.setSize(width, height);
         renderer.setClearColor(skyColor, 1);
+        document.body.appendChild(renderer.domElement);
 
         // カメラを作成
         const camera = new THREE.PerspectiveCamera(
@@ -193,7 +211,7 @@
         camera.position.set(Math.tan(Math.PI / 6) * size, size, size);
 
         // カメラコントローラーを作成
-        const controls = new THREE.OrbitControls(camera);
+        controls = new OrbitControls(camera, renderer.domElement);
 
         // 初期化のために実行
         onResize();
@@ -271,7 +289,8 @@
         // new THREE.DirectionalLight(色, 光の強さ)
         const light = new THREE.DirectionalLight(0xffffff, 2);
         scene.add(light);
-        light.position.set(1, 2, 0);const geometry = new THREE.BoxGeometry( 1, 1, 1 );
+        light.position.set(1, 2, 0);
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
 
         buildings.forEach(building => building.create());
 
@@ -280,7 +299,7 @@
         // マウス座標管理用のベクトルを作成
         const mouse = new THREE.Vector2();
         // マウスイベントを登録
-        canvas.addEventListener("mousemove", handleMouseMove);
+        //canvas.addEventListener("mousemove", handleMouseMove);
 
         // マウスを動かしたときのイベント
         function handleMouseMove(event) {
@@ -334,8 +353,5 @@
         }
       }
     </script>
-  </head>
-  <body>
-    <canvas id="myCanvas"></canvas>
   </body>
 </html>
